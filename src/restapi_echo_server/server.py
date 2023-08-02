@@ -12,6 +12,7 @@ class Handler(http_server.BaseHTTPRequestHandler):
     def __init__(self, *args):
         self.body_json = None
         self.body_raw = None
+        self.authz_required = False
 
         http_server.BaseHTTPRequestHandler.__init__(self, *args)
 
@@ -26,8 +27,11 @@ class Handler(http_server.BaseHTTPRequestHandler):
                 self.body_json = json.loads(self.body_raw)
             except:
                 self.body_json = None
-        body = self.rfile.read(content_length).decode('utf-8')
-        
+
+        if "Host" in self.headers:
+            if "auth" in self.headers['Host'].lower():
+                self.authz_required = True
+
         response = {
             "method": self.command,
             "path": parsed_path.path,
@@ -45,9 +49,11 @@ class Handler(http_server.BaseHTTPRequestHandler):
             },
         }
 
-        logger.info(f"{json.dumps(response)}")
-
-        self.send_response(200)
+        if self.authz_required and "authorization" not in self.headers:
+            logger.info("Unauthorized request (401)")
+            self.send_response(401)
+        else:
+            self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
         self.wfile.write(json.dumps(response).encode('utf-8'))
